@@ -22,6 +22,7 @@ class SignOcaTemplateGenerate(models.TransientModel):
         "sign.oca.template.generate.signer",
         inverse_name="wizard_id",
         default=lambda r: r._default_signers(),
+        ondelete="cascade",
     )
     sign_now = fields.Boolean()
     message = fields.Html()

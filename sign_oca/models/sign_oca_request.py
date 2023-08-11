@@ -86,6 +86,15 @@ class SignOcaRequest(models.Model):
             },
         }
 
+    def open_template(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "res_model": "sign.oca.template",
+            "view_mode": "form",
+            "res_id": self.template_id.id,
+        }
+
 
 class SignOcaRequestSigner(models.Model):
 
@@ -94,12 +103,13 @@ class SignOcaRequestSigner(models.Model):
     _description = "Sign Request Value"
 
     data = fields.Binary(related="request_id.data")
-    request_id = fields.Many2one("sign.oca.request", required=True)
+    request_id = fields.Many2one("sign.oca.request", required=True, ondelete="cascade")
     partner_name = fields.Char(related="partner_id.name")
     partner_id = fields.Many2one("res.partner", required=True)
     role_id = fields.Many2one("sign.oca.role", required=True)
     signed_on = fields.Datetime()
     signature_hash = fields.Char()
+    sign_item_value_ids = fields.One2many("sign.oca.request.item.value", inverse_name="signer_id")
 
     def _compute_access_url(self):
         super()._compute_access_url()
@@ -145,6 +155,7 @@ class SignOcaRequestSigner(models.Model):
         for page_number in range(1, reader.numPages + 1):
             pages[page_number] = reader.getPage(page_number - 1)
 
+        field_data = []
         for key in signatory_data:
             if signatory_data[key]["role"] == self.role_id.id:
                 signatory_data[key] = items[key]
@@ -155,6 +166,10 @@ class SignOcaRequestSigner(models.Model):
                 if new_page:
                     page.mergePage(new_page)
                 pages[item["page"]] = page
+                item_id = self.request_id.template_id.item_ids.filtered(lambda x: x.field_id.id == item["field_id"])
+                field_data.append({"signer_id": self.id, "sign_item_id": item_id.id, "value": item["value"]})
+        self.env["sign.oca.request.item.value"].create(field_data)
+
         for page_number in pages:
             output.addPage(pages[page_number])
         output_stream = BytesIO()
@@ -225,3 +240,13 @@ class SignOcaRequestSigner(models.Model):
 
     def _get_pdf_page(self, item, box):
         return getattr(self, "_get_pdf_page_%s" % item["field_type"])(item, box)
+
+
+class SignOcaRequestItemValue(models.Model):
+
+    _name = "sign.oca.request.item.value"
+    _description = "Sign Request Item Value"
+
+    signer_id = fields.Many2one("sign.oca.request.signer")
+    sign_item_id = fields.Many2one("sign.oca.template.item")
+    value = fields.Text()
